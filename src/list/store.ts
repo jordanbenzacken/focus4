@@ -16,12 +16,16 @@ export interface ListServiceResponse<T> {
     totalCount: number;
 };
 
-export type ListService<T> = (data: ListServiceParams) => Promise<ListServiceResponse<T>>;
+export type ListService<T> = (query: ListServiceParams, success?: (data: ListServiceResponse<T>) => void, error?: (e: any) => void) => () => void;
 
 @autobind
 export class ListStore<T> extends ListStoreBase<T> {
 
+    service?: ListService<T>;
+
     @observable private innerDataList: T[] = [];
+    private cancelPreviousRequest = () => {/*void*/};
+
     @computed
     get dataList() {
         return this.innerDataList;
@@ -34,8 +38,6 @@ export class ListStore<T> extends ListStoreBase<T> {
             this.innerDataList = list;
         }
     }
-
-    service?: ListService<T>;
 
     constructor(service?: ListService<T>) {
         super();
@@ -68,17 +70,18 @@ export class ListStore<T> extends ListStoreBase<T> {
     @action
     async load(fetchNext?: boolean) {
         if (this.service) {
-            this.pendingCount++;
-            const response = await this.service({
+            this.cancelPreviousRequest();
+            this.isLoading = true;
+            this.cancelPreviousRequest = this.service({
                 skip: fetchNext && this.dataList.length < this.totalCount ? this.dataList.length : 0,
                 sortDesc: this.sortAsc === undefined ? false : !this.sortAsc,
                 sortFieldName: this.sortBy,
                 top: this.top
+            }, response => {
+                this.isLoading = false;
+                this.innerDataList = (fetchNext ? [...this.dataList, ...response.dataList] : response.dataList) || [];
+                this.serverCount = response.totalCount;
             });
-            this.pendingCount--;
-
-            this.innerDataList = (fetchNext ? [...this.dataList, ...response.dataList] : response.dataList) || [];
-            this.serverCount = response.totalCount;
         }
     }
 

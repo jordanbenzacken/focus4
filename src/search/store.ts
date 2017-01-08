@@ -7,8 +7,8 @@ import {ListStoreBase} from "../list";
 import {OutputFacet, QueryInput, QueryOutput, Results, StoreFacet, UnscopedQueryOutput} from "./types";
 
 export interface SearchActionServices {
-    scoped?: <T>(query: QueryInput) => Promise<QueryOutput<T>>;
-    unscoped?: (query: QueryInput) => Promise<UnscopedQueryOutput>;
+    scoped?: <T>(query: QueryInput, success?: (data: QueryOutput<T>) => void, error?: (e: any) => void) => () => void;
+    unscoped?: (query: QueryInput, success?: (data: UnscopedQueryOutput) => void, error?: (e: any) => void) => () => void;
 }
 
 @autobind
@@ -22,6 +22,8 @@ export class SearchStore extends ListStoreBase<any> {
     @observable results: Results<{}> = [] as any;
 
     services: SearchActionServices;
+
+    private cancelPreviousRequest = () => {/*void*/};
 
     constructor(services: SearchActionServices) {
         super();
@@ -49,7 +51,7 @@ export class SearchStore extends ListStoreBase<any> {
     }
 
     @action
-    async search(isScroll = false) {
+    search(isScroll = false) {
         let {query} = this;
         const {scope, selectedFacets, groupingKey, sortBy, sortAsc, results, top} = this;
 
@@ -67,27 +69,21 @@ export class SearchStore extends ListStoreBase<any> {
             top
         };
 
-        let response;
-
-        this.pendingCount++;
+        this.isLoading = true;
+        this.cancelPreviousRequest();
         if (scope.toUpperCase() === "ALL") {
             if (this.services.unscoped) {
-                response = unscopedResponse(await this.services.unscoped(data));
+                this.cancelPreviousRequest = this.services.unscoped(data, raw => this.handleResponse(unscopedResponse(raw)));
             } else {
                 throw new Error("Impossible de lancer une recherche non scopée puisque le service correspondant n'a pas été défini.");
             }
         } else {
             if (this.services.scoped) {
-                response = scopedResponse(await this.services.scoped(data), {isScroll, scope, results});
+                this.cancelPreviousRequest = this.services.scoped(data, raw => this.handleResponse(scopedResponse(raw, {isScroll, scope, results})));
             } else {
                 throw new Error("Impossible de lancer une recherche scopée puisque le service correspondant n'a pas été défini.");
             }
         }
-        this.pendingCount--;
-
-        this.facets = response.facets as IObservableArray<StoreFacet>;
-        this.results = response.results as Results<{}>;
-        this.serverCount = response.totalCount;
     }
 
     @action
@@ -124,6 +120,13 @@ export class SearchStore extends ListStoreBase<any> {
         } else {
             return flatten(values(this.results).map(g => g.slice()));
         }
+    }
+
+    private handleResponse(response: {facets: StoreFacet[], results: {[group: string]: {}[]} | {[group: string]: {}[]}[], totalCount: number}) {
+        this.isLoading = false;
+        this.facets = response.facets as IObservableArray<StoreFacet>;
+        this.results = response.results as Results<{}>;
+        this.serverCount = response.totalCount;
     }
 }
 

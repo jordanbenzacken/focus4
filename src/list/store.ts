@@ -68,7 +68,7 @@ export class ListStore<T> extends ListStoreBase<T> {
     }
 
     @action
-    async load(fetchNext?: boolean) {
+    load(fetchNext?: boolean) {
         if (this.service) {
             this.cancelPreviousRequest();
             this.isLoading = true;

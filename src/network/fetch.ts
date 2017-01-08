@@ -72,5 +72,9 @@ export async function httpPut<RQ, RS>(url: string, data: RQ): Promise<RS> {
 export function cancellableFetch<RQ, RS>(method: "GET" | "POST" | "PUT" | "DELETE", url: string, data?: RQ, success?: (data: RS) => void, error?: (e: any) => void) {
     const id = v4();
     coreFetch<RQ, RS>(method, url, data, id).then(success, error);
-    return () => requestStore.updateRequest({id, url, status: "ignored"});
+    return () => {
+        if (requestStore.pending.has(id)) {
+            requestStore.updateRequest({id, url, status: "ignored"});
+        }
+    };
 }
